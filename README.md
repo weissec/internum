@@ -1,4 +1,4 @@
-# INETNUM
+# iNETNUM
 Bash wrapper for basic local services enumeration for internal networks penetration tests.
 
 ### Usage: 
