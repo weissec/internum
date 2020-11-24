@@ -1,11 +1,4 @@
-# inetnum
-
-`    _            __   `
-`   (_)___  ___  / /_____  __  ______ ___   `
-`  / / __ \/ _ \/ __/ __ \/ / / / __  __ \  `
-` / / / / /  __/ /_/ / / / /_/ / / / / / /  `
-`/_/_/ /_/\___/\__/_/ /_/\__,_/_/ /_/ /_/ by w315  `
-
+# INETNUM
 Bash wrapper for basic local services enumeration for internal networks penetration tests.
 
 ### Usage: 
