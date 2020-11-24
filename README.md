@@ -3,7 +3,8 @@ Bash wrapper for basic local services enumeration for internal networks penetrat
 
 Usage: 
 ---------------------------------
-./cisl.sh targets.txt
+chmod +x inetnum.sh
+./inetnum.sh targets.txt
 
 Description:
 ---------------------------------
