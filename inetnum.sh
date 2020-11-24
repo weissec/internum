@@ -1,21 +1,25 @@
 #!/usr/bin/bash
+
+# INETNUM v1.1 2020
+
 # Colors:
 color="\e[32m"
 normal="\e[0m"
 
 banner() {
 	clear
-	echo -e $color"  _______________   _________ "
-	echo -e " / ___/  _/ __/ /  / __/ _  /"
-	echo -e "/ /___/ /_\ \/ /__/ _//   _/"
-	echo -e "\___/___/___/____/___/_/\_\ by w315"
+	echo -e $color"    _            __ "                     
+	echo -e "   (_)___  ___  / /_____  __  ______ ___ "
+	echo -e "  / / __ \/ _ \/ __/ __ \/ / / / __  __ \\"
+	echo -e " / / / / /  __/ /_/ / / / /_/ / / / / / /"
+	echo -e "/_/_/ /_/\___/\__/_/ /_/\__,_/_/ /_/ /_/ by w315"
 	echo -e $normal
 }
 
 # Create a list of hosts running common exploitable or interesting services (internal network)
 if [ $# -eq 0 ]; then 
 	banner
-	echo "Usage: ./cisl.sh targets.txt"
+	echo "Usage: ./inetnum.sh targets.txt"
 	echo
 	echo "Description:"
 	echo "This tool enumerates specific common services from a list of targets provided."
@@ -143,6 +147,6 @@ echo
 echo "Removing temporary files..."
 rm TCP.tmp
 rm UDP.tmp
-echo "Finished running all checks. Thanks for using Cisler!"
+echo "Finished running all checks. Thanks for using inetnum!"
 exit
 
