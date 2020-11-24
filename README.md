@@ -2,8 +2,8 @@
 Bash wrapper for basic local services enumeration for internal networks penetration tests.
 
 ### Usage: 
-`chmod +x inetnum.sh`
-`./inetnum.sh targets.txt`
+`chmod +x inetnum.sh  
+./inetnum.sh targets.txt`
 
 ### Description:
 This tool enumerates specific common services from a list of targets provided.
