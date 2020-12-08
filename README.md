@@ -7,6 +7,7 @@ Bash wrapper for basic local services enumeration for internal networks penetrat
 
 ### Description:
 This tool enumerates specific common services from a list of targets provided.
+This script is written in BASH and it's designed as a one-file script for portability.
 
 ### Supported Services:
 HTTP, HTTPS, RDP, VNC, FTP, TELNET, SNMP, SMB, TFTP
