@@ -15,3 +15,7 @@ HTTP, HTTPS, RDP, VNC, FTP, TELNET, SNMP, SMB, TFTP
 ### Disclaimer: 
 Service discovery is based only on IANA Service Name and Transport Protocol Port Number Registry.
 For this reason, services running on custom ports will not be tested.
+
+
+### ISSUES: 
+Scripts only run as root (otherwise need to add sudo to each command)
