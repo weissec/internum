@@ -22,7 +22,7 @@ if [ $# -eq 0 ]; then
 	echo "Usage: ./inetnum.sh targets.txt"
 	echo
 	echo "Description:"
-	echo "This tool enumerates specific common services from a list of targets provided."
+	echo "This tool enumerates specific common services from a list of targets (IPs/Ranges) provided."
 	echo
 	echo "Supported Services:"
 	echo "HTTP,HTTPS,RDP,VNC,FTP,TELNET,SNMP,SMB,TFTP"
@@ -48,7 +48,7 @@ fi
 
 # Start
 banner
-echo "# Found "$hosts" hosts."
+echo "# Found "$hosts" entries."
 echo "- Scanning for TCP services.."
 masscan -p 80,88,8080,8081,443,8443,8444,445,21,23,3389,5900,5901 -iL $1 -oX TCP.tmp > /dev/null 2>&1
 echo "- Scanning for UDP services.."
