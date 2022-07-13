@@ -18,5 +18,5 @@ Service discovery is based only on IANA Service Name and Transport Protocol Port
 For this reason, services running on custom ports will not be tested.
 
 ### Requirements: 
-Root privileges
+Root privileges,
 Pre-installed packages
