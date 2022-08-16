@@ -11,12 +11,12 @@ This script is written in BASH and it's designed as a one-file script for portab
 For this reason, the functionality is dependant on specific packages being installed on the system.
 
 ### Supported Services:
-HTTP, HTTPS, RDP, VNC, FTP, TFTP, TELNET, SNMP, SMB, NFS, FINGER
+HTTP, HTTPS, RDP, VNC, FTP, TFTP, TELNET, SNMP, SMB, NFS, FINGER, SMTP
 
 ### Disclaimer: 
 Service discovery is based only on IANA Service Name and Transport Protocol Port Number Registry.
 For this reason, services running on custom ports will not be tested.
 
 ### Requirements: 
-Root privileges,
-Pre-installed packages
+Sudo privileges,
+Pre-installed packages (Nmap, Masscan, Eyewitness, SMBMap, SNMP-Check)
