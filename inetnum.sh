@@ -19,7 +19,7 @@ banner() {
 # Performing basic checks
 
 if [ $(id -u) != "0" ]; then
-	echo -e " [ERROR] This script must be run with sudo/root privileges. \n"
+	echo -e "[ERROR] This script must be run with sudo/root privileges. \n"
 	exit
 fi
 
@@ -33,8 +33,7 @@ which nmap > /dev/null 2>&1
 if [ "$?" != 0 ]; then
 	echo "[ERROR] Nmap does not seem to be installed and it is required for this script."
 	exit
-else
-
+fi
 
 if [ $# -eq 0 ]; then 
 	banner
@@ -101,7 +100,7 @@ awk -F'"' '/445/ {print $4}' TCP.tmp > ./services/SMB.txt
 quanti=$(wc -l < ./services/SMB.txt)
 echo "- Found "$quanti "SMB Services."
 
-awk -F'"' '/590/ {print $4":"$10}' TCP.tmp > ./services/VNC.txt
+awk -F'"' '/590/ {print $4}' TCP.tmp > ./services/VNC.txt
 quanti=$(wc -l < ./services/VNC.txt)
 echo "- Found "$quanti "VNC Services."
 
@@ -126,7 +125,7 @@ quanti=$(wc -l < ./services/FINGER.txt)
 echo "- Found "$quanti "FINGER Services."
 
 # for SMTP, we are currently only listing unencrypted services
-awk -F'"' '/79/ {print $4}' TCP.tmp > ./services/SMTP.txt
+awk -F'"' '/25/ {print $4}' TCP.tmp > ./services/SMTP.txt
 quanti=$(wc -l < ./services/SMTP.txt)
 echo "- Found "$quanti "SMTP Services."
 
@@ -156,7 +155,7 @@ fi
 # Running SMBMap
 which smbmap > /dev/null 2>&1
 if [ "$?" != 0 ]; then
-	echo "[ERROR] SMBMap does not seem to be installed and it is required for this script."
+	echo "[ERROR] SMBMap does not seem to be installed - skipping step."
 else
 	echo "- Checking SMB Shares on discovered services..."
 	for ip in $(cat ./services/SMB.txt); do
@@ -172,12 +171,11 @@ nmap -Pn -n -iL ./services/SMB.txt -p445 --script=smb-security-mode -oN .nmap-sm
 cat .nmap-smb-signing.tmp | grep disabled -B 15 | grep "for" | cut -d " " -f5 > ./services/evidence/SMB-Signing-Disabled.txt
 rm .nmap-smb-signing.tmp
 
-
 # ------- SNMP
 # Running SNMP-Check
 which snmp-check > /dev/null 2>&1
 if [ "$?" != 0 ]; then
-	echo "[ERROR] SNMP-Check does not seem to be installed and it is required for this script."
+	echo "[ERROR] SNMP-Check does not seem to be installed - skipping step."
 else
 	echo "- Checking SNMP services for default community strings..."
 	mkdir ./services/evidence/SNMP-Checks
@@ -225,6 +223,5 @@ echo
 echo "Removing temporary files..."
 rm TCP.tmp > /dev/null 2>&1
 rm UDP.tmp > /dev/null 2>&1
-echo "[DONE] Please find all resuls in the 'services' folder."
+echo "[DONE] Please find all resuls in the service folder."
 exit
-
