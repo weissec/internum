@@ -207,7 +207,7 @@ nmap -Pn -sV --script vnc-info,realvnc-auth-bypass,vnc-title -p 5900,5901 -iL ./
 
 # ------- FINGER
 echo "- Checking FINGER Services..."
-nmap -Pn -sV -sC -iL ./services/FINGER.txt -oN ./services/evidence/FINGER-Checks.txt > /dev/null 2>&1
+nmap -Pn -sV -sC -p 79 -iL ./services/FINGER.txt -oN ./services/evidence/FINGER-Checks.txt > /dev/null 2>&1
 
 # ------- NFS
 echo "- Checking NFS Services..."
