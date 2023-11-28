@@ -1,10 +1,4 @@
 # Internum
-     _       __                                
-    (_)___  / /____  _________  __  __________ 
-   / / __ \/ __/ _ \/ ___/ __ \/ / / / __  __ \
-  / / / / / /_/  __/ /  / / / / /_/ / / / / / /
-/_/_/ /_/\__/\___/_/  /_/ /_/\__,_/_/ /_/ /_/ by W3155
-
 Bash wrapper for basic local services enumeration on internal (local) networks.
 
 ### Usage: 
