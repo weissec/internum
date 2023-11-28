@@ -3,8 +3,8 @@ Bash wrapper for basic local services enumeration on internal (local) networks.
 
 ### Usage: 
 `chmod +x inetnum.sh`    
-`./inetnum.sh targets.txt` 
-`./inetnum.sh -h` 
+`./internum.sh targets.txt` 
+`./internum.sh -h` 
 
 ### Description:
 This tool enumerates specific common services from a list of target IPs/subnets provided or a Nessus file.
