@@ -325,7 +325,7 @@ if [ -f "./$projectname/services/SNMP.txt" ]; then
 		mkdir ./$projectname/evidence/SNMP-Checks
 		cat ./$projectname/services/SNMP.txt | cut -d ":" -f1 >> ./$projectname/evidence/.snmp-targets.tmp
 		for ipp in $(cat ./$projectname/evidence/.snmp-targets.tmp); do
-			snmp-check $ipp > ./$projectname/evidence/SNMP-Checks/$ip-snmp.txt
+			snmp-check $ipp > ./$projectname/evidence/SNMP-Checks/$ipp-snmp.txt
 			# Add vuln
 			echo "- [CONFIRMED] Cleartext protocols in use." >> ./$projectname/evidence/vulnerabilities.txt
 			echo "- [POTENTIAL] Check default community strings on SNMP services." >> ./$projectname/evidence/vulnerabilities.txt
