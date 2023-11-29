@@ -267,7 +267,7 @@ echo -e $green"# Enumerating discovered services..."$normal
 
 if [ -f "./$projectname/services/HTTP.txt" ]; then
 	echo "> Checking: HTTP"
-    	awk -F':' '/:80/ {print "https://"$1":"$2}' ./$projectname/services/HTTP.txt >> ./$projectname/evidence/URLs.txt
+    	awk -F':' '/:80/ {print "http://"$1":"$2}' ./$projectname/services/HTTP.txt >> ./$projectname/evidence/URLs.txt
     	# Add vuln
 	echo "- [CONFIRMED] Cleartext protocols in use." >> ./$projectname/evidence/vulnerabilities.txt
 fi 
