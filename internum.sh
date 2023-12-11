@@ -280,7 +280,7 @@ if [ -f "./$projectname/evidence/URLs.txt" ]; then
 	# Running Eyewitness
 	which eyewitness > /dev/null 2>&1
 	if [ "$?" != 0 ]; then
-		echo "- Skipping HTTP/S services screenshots as Eyewtiness was not found."
+		echo "- Skipping HTTP/S services screenshots as Eyewitness was not found."
 	else
 		echo "- Running Eyewitness on HTTP/S services..."
 		eyewitness --no-prompt --web -f ./$projectname/evidence/URLs.txt -d ./$projectname/evidence/eyewitness > /dev/null 2>&1
