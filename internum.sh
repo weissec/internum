@@ -128,7 +128,7 @@ functiontwo () {
 			fi	
 		
 			echo -e $green"\n# scanning for TCP services.. (Standard Scan)"$normal
-			nmap -p 80,88,8080,8081,443,8443,445,21,23,3389,5900,5901,2049,79,25,389,636 --open -iL $inputfile -oG ./$projectname/.TCP.tmp > /dev/null 2>&1
+			nmap -p 22,80,88,8080,8081,443,8443,445,21,23,3389,5900,5901,2049,79,25,389,636 --open -iL $inputfile -oG ./$projectname/.TCP.tmp > /dev/null 2>&1
 			echo -e $green"# Scanning for UDP services.. (Standard Scan)"$normal
 			nmap -sU -p 69,161 -iL $inputfile -oG ./$projectname/.UDP.tmp > /dev/null 2>&1
 		elif [[ "$scantype" == 2 ]]; then
@@ -139,7 +139,7 @@ functiontwo () {
 				servicescan
 			fi
 			echo -e $green"\n# Scanning for TCP services.. (Fast Scan)"$normal
-			masscan -p 80,88,8080,8081,443,8443,445,21,23,3389,5900,5901,2049,79,25,389,636 -iL $inputfile -oX ./$projectname/.TCP.tmp > /dev/null 2>&1
+			masscan -p 22,80,88,8080,8081,443,8443,445,21,23,3389,5900,5901,2049,79,25,389,636 -iL $inputfile -oX ./$projectname/.TCP.tmp > /dev/null 2>&1
 			echo -e $green"# Scanning for UDP services.. (Fast Scan)"$normal
 			masscan -p U:69,U:161 -iL $inputfile -oX ./$projectname/.UDP.tmp > /dev/null 2>&1
 		else
@@ -217,6 +217,7 @@ functiontwo () {
 		fi
 	}
 
+	check_service 22 SSH TCP
 	check_service 80 HTTP TCP
 	check_service "*443" HTTPS TCP
 	check_service 445 SMB TCP
@@ -289,7 +290,22 @@ if [ -f "./$projectname/evidence/URLs.txt" ]; then
 	fi
 fi
 
-# Other checks?
+# SSH
+# Checking for brute-force
+# Checking for Weak Ciphers and Key Exchange Algorithms
+if [ -f "./$projectname/services/SSH.txt" ]; then
+
+	echo "> Checking: SSH"
+	mkdir ./$projectname/evidence/SSH-Checks
+	cat ./$projectname/services/SSH.txt | cut -d ":" -f1 >> ./$projectname/evidence/.ssh-targets.tmp
+	for ipp in $(cat ./$projectname/evidence/.ssh-targets.tmp); do
+		nmap -p 22 --script ssh-auth-methods --script ssh2-enum-algos $ipp -oN ./$projectname/evidence/SSH-Checks/$ipp-SSH-Config.txt
+		# Add vuln
+		echo "- [POTENTIAL] SSH Password Authentication, vulnerable to brute-force." >> ./$projectname/evidence/vulnerabilities.txt
+		echo "- [POTENTIAL] Weak SSH Ciphers and Key-Exchange Algorithms." >> ./$projectname/evidence/vulnerabilities.txt
+	done
+	rm ./$projectname/evidence/.ssh-targets.tmp
+fi
 
 # SMB
 # Running SMBMap
