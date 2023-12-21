@@ -12,7 +12,7 @@ This script is written in BASH and it's designed as a one-file script for portab
 For this reason, the functionality is dependant on specific packages being installed on the system.
 
 ### Supported Services:
-HTTP, HTTPS, RDP, VNC, FTP, TFTP, TELNET, SNMP, SMB, NFS, FINGER, SMTP, LDAP, LDAPS, KERBEROS,
+SSH, HTTP, HTTPS, RDP, VNC, FTP, TFTP, TELNET, SNMP, SMB, NFS, FINGER, SMTP, LDAP, LDAPS, KERBEROS
 
 ### Disclaimer: 
 Service discovery is based only on IANA Service Name and Transport Protocol Port Number Registry.
