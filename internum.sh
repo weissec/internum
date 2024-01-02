@@ -299,7 +299,7 @@ if [ -f "./$projectname/services/SSH.txt" ]; then
 	mkdir ./$projectname/evidence/SSH-Checks
 	cat ./$projectname/services/SSH.txt | cut -d ":" -f1 >> ./$projectname/evidence/.ssh-targets.tmp
 	for ipp in $(cat ./$projectname/evidence/.ssh-targets.tmp); do
-		nmap -p 22 --script ssh-auth-methods --script ssh2-enum-algos $ipp -oN ./$projectname/evidence/SSH-Checks/$ipp-SSH-Config.txt
+		nmap -p 22 -sV --script ssh-auth-methods --script ssh2-enum-algos $ipp -oN ./$projectname/evidence/SSH-Checks/$ipp-SSH-Config.txt
 		# Add vuln
 		echo "- [POTENTIAL] SSH Password Authentication, vulnerable to brute-force." >> ./$projectname/evidence/vulnerabilities.txt
 		echo "- [POTENTIAL] Weak SSH Ciphers and Key-Exchange Algorithms." >> ./$projectname/evidence/vulnerabilities.txt
