@@ -213,7 +213,7 @@ functiontwo () {
 	  	servcount=$(grep ":$port" ./$projectname/$3.txt | wc -l)
 		if (($servcount > 0)); then
 			echo "- $file_suffix: $servcount"
-			grep -E ":$port" ./$projectname/$3.txt > ./$projectname/services/$file_suffix.txt
+			grep -E ":$port" ./$projectname/$3.txt >> ./$projectname/services/$file_suffix.txt
 		fi
 	}
 
@@ -226,6 +226,7 @@ functiontwo () {
 	check_service 69 TFTP UDP
 	check_service 23 TELNET TCP
 	check_service 161 SNMP UDP
+ 	check_service 111 NFS TCP
 	check_service 2049 NFS TCP
 	check_service 3389 RDP TCP
 	check_service 79 FINGER TCP
