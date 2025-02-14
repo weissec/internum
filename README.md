@@ -2,9 +2,11 @@
 Bash wrapper for basic local services enumeration on internal (local) networks.
 
 ### Usage: 
-`git clone https://github.com/weissec/internum.git`
-`chmod +x internum.sh`    
-`sudo internum.sh -h`
+```
+git clone https://github.com/weissec/internum.git`
+chmod +x internum.sh    
+sudo internum.sh -h
+```
 
 ### Description:
 This tool enumerates specific common services from a list of target IPs/ranges provided or a Nessus file (.nessus).
