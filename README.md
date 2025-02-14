@@ -4,7 +4,7 @@ Bash wrapper for basic local services enumeration on internal (local) networks.
 ### Usage: 
 ```
 git clone https://github.com/weissec/internum.git
-chmod +x internum.sh    
+sudo chmod +x internum.sh    
 sudo internum.sh -h
 ```
 
