@@ -14,7 +14,7 @@ This script is written in BASH and it's designed as a one-file script for portab
 For this reason, the functionality is dependant on specific packages being installed on the system (see requirements section below).
 
 ### Current Supported Services:
-SSH, HTTP, HTTPS, RDP, VNC, FTP, TFTP, TELNET, SNMP, SMB, NFS, FINGER, SMTP, LDAP, LDAPS, KERBEROS
+SSH, HTTP, HTTPS, RDP, VNC, FTP, TFTP, TELNET, SNMP, SMB, NFS, FINGER, SMTP, LDAP, LDAPS, KERBEROS, DNS, MySQL, PostgreSQL, Redis, MongoDB, Elasticsearch, Docker, Kubernetes, SIP, RTSP, RPC,  Oracle
 
 ### Disclaimer: 
 Service discovery is based only on IANA Service Name and Transport Protocol Port Number Registry.
