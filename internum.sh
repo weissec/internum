@@ -161,10 +161,35 @@ validate_ip_list() {
 }
 
 # --------------------------
+# Packages Functions
+# --------------------------
+
+install_package() {
+
+	# ask to install
+	local package=$1
+	echo -e "\n${bold}$package ${normal}is not installed and it's required to perform some of the checks." 
+	echo -e "Would you like to install it or skip the related checks?"
+	select install_or_skip in "Install the package" "Skip $package checks"; do
+		case $REPLY in
+		    1) sudo apt install $package; echo "Installed package $package" | strip_colors | add_timestamp >> "$log_file"; break;;
+		    2) echo "Will skip $package checks"; break;;
+		    *) echo "Invalid option";;
+		esac
+    	done
+	echo
+}
+
+# --------------------------
 # Scanning Functions
 # --------------------------
 
 run_service_scan() {
+
+	if ! command -v nmap &>/dev/null; then
+		install_package "nmap"	
+	fi
+
 	local scan_type=$1
 	local targets=$2
 	mkdir -p "$project_base/nmap" || error_exit "Failed to create nmap folder in project directory"
@@ -261,7 +286,7 @@ enumerate_http_https() {
 	if [ -f "$project_base/services/HTTP.txt" ]; then
 		#mkdir -p "$project_base/evidence/HTTP"
 		# awk -F':' '/:80/ {print "http://"$1":"$2}' "$project_base/services/HTTP.txt" >> "$project_base/evidence/URLs.txt"
-		echo "[CONFIRMED] Cleartext protocols in use." >> "$project_base/evidence/Vulnerabilities.txt"
+		echo "[CONFIRMED] Use of clear-text protocols" >> "$project_base/evidence/Vulnerabilities.txt"
 		# Add to Cleartext protocols evidence
 		cat "$project_base/services/HTTP.txt" >> "$project_base/evidence/Cleartext-Protocols.txt"
 		cat "$project_base/services/HTTP.txt" >> "$project_base/evidence/Web-Services.txt"
@@ -272,10 +297,14 @@ enumerate_http_https() {
         	cat "$project_base/services/HTTPS.txt" >> "$project_base/evidence/Web-Services.txt"
 		# awk -F':' '/:443/ {print "https://"$1":"$2}' "$project_base/services/HTTPS.txt" >> "$project_base/evidence/URLs.txt"
 	fi
+	
+	if ! command -v eyewitness &>/dev/null; then
+		install_package "eyewitness"	
+	fi
     
 	# Run Eyewitness if installed and if any URLs found
 	if [ -f "$project_base/evidence/Web-Services.txt" ]; then
-		echo "[INFO] Check default credentials and unauthenticated resources for all web services." >> "$project_base/evidence/Vulnerabilities.txt"
+		echo "[INFO] Check default credentials and unauthenticated resources for all web services" >> "$project_base/evidence/Vulnerabilities.txt"
 		
 		if command -v eyewitness &>/dev/null; then
 			echo "Running Eyewitness on web services: 'eyewitness --no-prompt --web -f '[project]/evidence/Web-Services.tx' -d '[project]/evidence/Eyewitness'" | strip_colors | add_timestamp >> "$log_file" # Log Eyewitness execution
@@ -288,7 +317,7 @@ enumerate_http_https() {
 	    	else
 		    	echo "Eyewitness not installed. Skipping HTTP/HTTPS screenshots." | strip_colors | add_timestamp >> "$log_file"
 		fi
-    	fi
+	fi
     	
 	status_end $?
 }
@@ -315,8 +344,8 @@ enumerate_ssh() {
             fi
         done < "$project_base/services/SSH.txt"
         
-        echo "[POTENTIAL] SSH Password Authentication, vulnerable to brute-force." >> "$project_base/evidence/Vulnerabilities.txt"
-        echo "[POTENTIAL] Weak SSH Ciphers and Key-Exchange Algorithms." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] SSH Password Authentication, vulnerable to brute-force" >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] Weak SSH Ciphers and Key-Exchange Algorithms" >> "$project_base/evidence/Vulnerabilities.txt"
 
     fi
     
@@ -328,19 +357,40 @@ enumerate_smb() {
     status_start "Enumerating SMB services"
     
     if [ -f "$project_base/services/SMB.txt" ]; then
-        cut -d ":" -f1 "$project_base/services/SMB.txt" > "$project_base/evidence/.smb-targets.tmp"
-        
-        nmap --script "safe or smb-enum-*" -p 445 -iL "$project_base/evidence/.smb-targets.tmp" -oN "$project_base/evidence/SMB-Enumeration.txt" >/dev/null 2>&1
-        echo "[POTENTIAL] Check if any obsolete SMBv1 services are present." >> "$project_base/evidence/Vulnerabilities.txt"
-        
-        # Check for SMB Signing disabled
-        nmap -Pn -n -iL "$project_base/evidence/.smb-targets.tmp" -p445 --script=smb-security-mode -oN "$project_base/evidence/.smb-signing.tmp" >/dev/null 2>&1
-        grep "disabled" "$project_base/evidence/.smb-signing.tmp" -B 15 | grep "for" | cut -d " " -f5 > "$project_base/evidence/SMB-Signing-Disabled.txt"
-        
-        echo "[CONFIRMED] Hosts with SMB Signing disabled or not required." >> "$project_base/evidence/Vulnerabilities.txt"
-        echo "[POTENTIAL] Check accessible SMB shares for sensitive content." >> "$project_base/evidence/Vulnerabilities.txt"
-        
-        rm "$project_base/evidence/.smb-targets.tmp" "$project_base/evidence/.smb-signing.tmp" 2>/dev/null
+        mkdir -p "$project_base/evidence/SMB"
+        targets_file="$project_base/evidence/.smb-targets.tmp"
+        cut -d ":" -f1 "$project_base/services/SMB.txt" > "$targets_file"
+
+        # 1. Check for SMBv1 protocol usage
+        echo "Checking for SMBv1 protocol usage on port 445/tcp" | strip_colors | add_timestamp >> "$log_file"
+        nmap -p445 --script smb-protocols -iL "$targets_file" -oN "$project_base/evidence/SMB/smbv1-check.txt" >/dev/null 2>&1
+        if grep -q "SMBv1: Enabled" "$project_base/evidence/SMB/smbv1-check.txt"; then
+            grep "SMBv1: Enabled" "$project_base/evidence/SMB/smbv1-check.txt" | awk '{print $2}' | while read ip; do
+                echo "[CONFIRMED] SMB version 1 enabled" >> "$project_base/evidence/Vulnerabilities.txt"
+            done
+        fi
+
+        # 2. Check for SMB signing disabled
+        echo "Checking SMB signing requirements" | strip_colors | add_timestamp >> "$log_file"
+        signing_file="$project_base/evidence/SMB/smb-signing.txt"
+        nmap -p445 --script smb-security-mode -iL "$targets_file" -oN "$signing_file" >/dev/null 2>&1
+        grep -L "message_signing: required" "$signing_file" | while read ip; do
+            echo "[CONFIRMED] SMB signing disabled or not required" >> "$project_base/evidence/Vulnerabilities.txt"
+        done
+
+        # 3. Check for null sessions and unauthenticated shares
+        echo "Checking for null sessions and unauthenticated shares..." | strip_colors | add_timestamp >> "$log_file"
+        nmap -p445 --script smb-enum-shares --script-args smbguest=1 -iL "$targets_file" -oN "$project_base/evidence/SMB/null-sessions.txt" >/dev/null 2>&1
+        grep -B4 "Anonymous access: READ" "$project_base/evidence/SMB/null-sessions.txt" | awk '/for /{print $NF}' | sort -u | while read ip; do
+            echo "[CONFIRMED] Null session/unauthenticated SMB shares available" >> "$project_base/evidence/Vulnerabilities.txt"
+        done
+
+        # 4. General SMB enumeration
+        echo "Performing general SMB enumeration..." | strip_colors | add_timestamp >> "$log_file"
+        nmap -p445 --script "safe or smb-enum-*" -iL "$targets_file" -oN "$project_base/evidence/SMB/enumeration.txt" >/dev/null 2>&1
+
+        # Cleanup temporary files
+        rm -f "$targets_file"
     fi
     
     status_end $?
@@ -350,28 +400,48 @@ enumerate_smb() {
 enumerate_snmp() {
     status_start "Enumerating SNMP services"
     
-	if [ -f "$project_base/services/SNMP.txt" ]; then
+    if [ -f "$project_base/services/SNMP.txt" ]; then
+        mkdir -p "$project_base/evidence/SNMP-Checks"
+        
+        while read -r target; do
+            ip=$(echo "$target" | cut -d':' -f1)
+            
+            # Check SNMP version
+            echo "Checking SNMP version on $ip..." | strip_colors | add_timestamp >> "$log_file"
+            snmp_version=$(nmap -sU -p 161 --script snmp-info "$ip" -oN "$project_base/evidence/SNMP-Checks/$ip-version.txt" 2>/dev/null | grep -oP "SNMPv[1-3]")
+            
+            # Log SNMP version
+            if [ -n "$snmp_version" ]; then
+                echo "SNMP version detected: $snmp_version on $ip" | strip_colors | add_timestamp >> "$log_file"
+                
+                # Add vulnerability if SNMPv1, v2, or v2c is in use
+                if [[ "$snmp_version" =~ ^SNMPv(1|2c?)$ ]]; then
+                    echo "[CONFIRMED] Use of clear-text protocols" >> "$project_base/evidence/Vulnerabilities.txt"
+                fi
+            else
+                echo "Unable to detect SNMP version on $ip." | strip_colors | add_timestamp >> "$log_file"
+            fi
+            
+            # Check for default community strings (public/private)
+            echo "Checking default SNMP community strings on $ip" | strip_colors | add_timestamp >> "$log_file"
+            for community in "public" "private"; do
+                snmpwalk -v2c -c "$community" "$ip" >/dev/null 2>&1
+                if [ $? -eq 0 ]; then
+                    echo "[CONFIRMED] Default SNMP community string in use" >> "$project_base/evidence/Vulnerabilities.txt"
+                fi
+            done
+            
+            # Perform detailed SNMP enumeration
+            if command -v snmp-check &>/dev/null; then
+                echo "Running SNMP enumeration on $ip" | strip_colors | add_timestamp >> "$log_file"
+                snmp-check "$ip" > "$project_base/evidence/SNMP-Checks/$ip-snmp.txt"
+            else
+                echo "snmp-check not installed. Skipping detailed SNMP enumeration for $ip." | strip_colors | add_timestamp >> "$log_file"
+            fi
+        done < <(cut -d ":" -f1 "$project_base/services/SNMP.txt")
+    fi
     
-		# Check if SNMPv3 in use
-            	
-            	# If v1,v2 or v2c, report cleartext protocols and check community string
-    
-    
-		if command -v snmp-check &>/dev/null; then
-		    mkdir -p "$project_base/evidence/SNMP-Checks"
-		    while read -r target; do
-		        snmp-check "$target" > "$project_base/evidence/SNMP-Checks/$target-snmp.txt"
-		    done < <(cut -d ":" -f1 "$project_base/services/SNMP.txt")
-		    
-		    
-		    echo "[CONFIRMED] Cleartext protocols in use." >> "$project_base/evidence/Vulnerabilities.txt"
-		    echo "[POTENTIAL] Check default community strings on SNMP services." >> "$project_base/evidence/Vulnerabilities.txt"
-		else
-		    echo "[POTENTIAL] Check default community strings on SNMP services." >> "$project_base/evidence/Vulnerabilities.txt"
-		fi
-    	fi
-    
-	status_end $?
+    status_end $?
 }
 
 # Function to enumerate FTP services
@@ -382,8 +452,8 @@ enumerate_ftp() {
         cut -d ":" -f1 "$project_base/services/FTP.txt" > "$project_base/evidence/.ftp-targets.tmp"
         
         nmap -Pn -n -iL "$project_base/evidence/.ftp-targets.tmp" -p21 -sC -oN "$project_base/evidence/FTP-Checks.txt" >/dev/null 2>&1
-        echo "[POTENTIAL] Check for anonymous access on FTP services." >> "$project_base/evidence/Vulnerabilities.txt"
-        echo "[CONFIRMED] Cleartext protocols in use." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] Check for anonymous access on FTP services" >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[CONFIRMED] Use of clear-text protocols" >> "$project_base/evidence/Vulnerabilities.txt"
         
         rm "$project_base/evidence/.ftp-targets.tmp" 2>/dev/null
     fi
@@ -399,7 +469,7 @@ enumerate_vnc() {
         cut -d ":" -f1 "$project_base/services/VNC.txt" > "$project_base/evidence/.vnc-targets.tmp"
         
         nmap -Pn -sV --script vnc-info,realvnc-auth-bypass,vnc-title -p 5900,5901 -iL "$project_base/evidence/.vnc-targets.tmp" -oN "$project_base/evidence/VNC-Checks.txt" >/dev/null 2>&1
-        echo "[POTENTIAL] Check for any unauthenticated VNC services." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] Check for any unauthenticated VNC services" >> "$project_base/evidence/Vulnerabilities.txt"
         
         rm "$project_base/evidence/.vnc-targets.tmp" 2>/dev/null
     fi
@@ -413,9 +483,9 @@ enumerate_tftp() {
     
     if [ -f "$project_base/services/TFTP.txt" ]; then
         cut -d ":" -f1 "$project_base/services/TFTP.txt" > "$project_base/evidence/.tftp-targets.tmp"
-        
+        echo "[CONFIRMED] Use of clear-text protocols" >> "$project_base/evidence/Vulnerabilities.txt"
         nmap -Pn -sU -p69 -sV --script tftp-enum -iL "$project_base/evidence/.tftp-targets.tmp" -oN "$project_base/evidence/TFTP-Checks.txt" >/dev/null 2>&1
-        echo "[POTENTIAL] Check for exposed TFTP services." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] Check for exposed TFTP services" >> "$project_base/evidence/Vulnerabilities.txt"
         
         rm "$project_base/evidence/.tftp-targets.tmp" 2>/dev/null
     fi
@@ -431,7 +501,7 @@ enumerate_telnet() {
         cut -d ":" -f1 "$project_base/services/TELNET.txt" > "$project_base/evidence/.telnet-targets.tmp"
         
         nmap -sV -Pn --script "*telnet*" -p 23 -iL "$project_base/evidence/.telnet-targets.tmp" -oN "$project_base/evidence/TELNET-Checks.txt" >/dev/null 2>&1
-        echo "[CONFIRMED] Cleartext protocols in use." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[CONFIRMED] Use of clear-text protocols" >> "$project_base/evidence/Vulnerabilities.txt"
         
         rm "$project_base/evidence/.telnet-targets.tmp" 2>/dev/null
     fi
@@ -447,7 +517,7 @@ enumerate_nfs() {
         cut -d ":" -f1 "$project_base/services/NFS.txt" > "$project_base/evidence/.nfs-targets.tmp"
         
         nmap -Pn --script=nfs-ls.nse,nfs-showmount.nse,nfs-statfs.nse -p 2049 -iL "$project_base/evidence/.nfs-targets.tmp" -oN "$project_base/evidence/NFS-Checks.txt" >/dev/null 2>&1
-        echo "[POTENTIAL] Check content of any NFS shares for sensitive data." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] Check content of any NFS shares for sensitive data" >> "$project_base/evidence/Vulnerabilities.txt"
         
         rm "$project_base/evidence/.nfs-targets.tmp" 2>/dev/null
     fi
@@ -463,7 +533,7 @@ enumerate_rdp() {
         cut -d ":" -f1 "$project_base/services/RDP.txt" > "$project_base/evidence/.rdp-targets.tmp"
         
         nmap -sV -Pn --script "rdp*" -p 3389 -iL "$project_base/evidence/.rdp-targets.tmp" -oN "$project_base/evidence/RDP-Checks.txt" >/dev/null 2>&1
-        echo "[POTENTIAL] Check if NLA is implemented for RDP services." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] Check if NLA is implemented for RDP services" >> "$project_base/evidence/Vulnerabilities.txt"
         
         rm "$project_base/evidence/.rdp-targets.tmp" 2>/dev/null
     fi
@@ -479,7 +549,7 @@ enumerate_finger() {
         cut -d ":" -f1 "$project_base/services/FINGER.txt" > "$project_base/evidence/.finger-targets.tmp"
         
         nmap -Pn -sV -sC -p 79 -iL "$project_base/evidence/.finger-targets.tmp" -oN "$project_base/evidence/FINGER-Checks.txt" >/dev/null 2>&1
-        echo "[POTENTIAL] Check for exposed FINGER services." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] Check for exposed FINGER services" >> "$project_base/evidence/Vulnerabilities.txt"
         
         rm "$project_base/evidence/.finger-targets.tmp" 2>/dev/null
     fi
@@ -495,7 +565,7 @@ enumerate_smtp() {
         cut -d ":" -f1 "$project_base/services/SMTP.txt" > "$project_base/evidence/.smtp-targets.tmp"
         
         nmap -Pn --script=smtp-commands,smtp-enum-users,smtp-vuln-cve2010-4344,smtp-vuln-cve2011-1720,smtp-vuln-cve2011-1764 -p 25 -iL "$project_base/evidence/.smtp-targets.tmp" -oN "$project_base/evidence/SMTP-Checks.txt" >/dev/null 2>&1
-        echo "[CONFIRMED] Cleartext protocols in use." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[CONFIRMED] Use of clear-text protocols" >> "$project_base/evidence/Vulnerabilities.txt"
         
         rm "$project_base/evidence/.smtp-targets.tmp" 2>/dev/null
     fi
@@ -503,56 +573,15 @@ enumerate_smtp() {
     status_end $?
 }
 
-# Function to enumerate LDAP services
-enumerate_ldap() {
-    status_start "Enumerating LDAP services"
-    
-    if [ -f "$project_base/services/LDAP.txt" ]; then
-        cut -d ":" -f1 "$project_base/services/LDAP.txt" > "$project_base/evidence/.ldap-targets.tmp"
-        
-        nmap -Pn -n -p 389 --script "ldap* and not brute" -iL "$project_base/evidence/.ldap-targets.tmp" -oN "$project_base/evidence/LDAP-Checks.txt" >/dev/null 2>&1
-        echo "[POTENTIAL] Check for anonymous LDAP access." >> "$project_base/evidence/Vulnerabilities.txt"
-        
-        rm "$project_base/evidence/.ldap-targets.tmp" 2>/dev/null
-    fi
-    
-    status_end $?
-}
-
-# Function to enumerate LDAPS services
-enumerate_ldaps() {
-    status_start "Enumerating LDAPS services"
-    
-    if [ -f "$project_base/services/LDAPS.txt" ]; then
-        cut -d ":" -f1 "$project_base/services/LDAPS.txt" > "$project_base/evidence/.ldaps-targets.tmp"
-        
-        nmap -Pn -n -p 636 --script "ldap* and not brute" -iL "$project_base/evidence/.ldaps-targets.tmp" -oN "$project_base/evidence/LDAPS-Checks.txt" >/dev/null 2>&1
-        echo "[POTENTIAL] Check for misconfigured LDAPS services." >> "$project_base/evidence/Vulnerabilities.txt"
-        
-        rm "$project_base/evidence/.ldaps-targets.tmp" 2>/dev/null
-    fi
-    
-    status_end $?
-}
-
-# Function to enumerate KERBEROS services
-enumerate_kerberos() {
-    status_start "Enumerating KERBEROS services"
-    
-    if [ -f "$project_base/services/KERBEROS.txt" ]; then
-        cut -d ":" -f1 "$project_base/services/KERBEROS.txt" > "$project_base/evidence/.kerberos-targets.tmp"
-        
-        nmap -Pn -n -p 88 --script krb5-enum-users -iL "$project_base/evidence/.kerberos-targets.tmp" -oN "$project_base/evidence/KERBEROS-Checks.txt" >/dev/null 2>&1
-        echo "[POTENTIAL] Check for Kerberos user enumeration vulnerabilities." >> "$project_base/evidence/Vulnerabilities.txt"
-        
-        rm "$project_base/evidence/.kerberos-targets.tmp" 2>/dev/null
-    fi
-    
-    status_end $?
-}
-
 enumerate_dns() {
     status_start "Enumerating DNS services"
+    
+    	if ! command -v dnsenum &>/dev/null; then
+		install_package "dnsenum"	
+	fi
+	if ! command -v dig &>/dev/null; then
+		install_package "dig"	
+	fi
     
     if [ -f "$project_base/services/DNS.txt" ]; then
         mkdir -p "$project_base/evidence/DNS"
@@ -572,8 +601,8 @@ enumerate_dns() {
             dnsenum --enum $ip > "$project_base/evidence/DNS/$ip-dnsenum.txt" 2>&1
         done < "$project_base/services/DNS.txt"
         
-        echo "[POTENTIAL] DNS zone transfer vulnerability." >> "$project_base/evidence/Vulnerabilities.txt"
-        echo "[POTENTIAL] DNS cache poisoning vulnerability." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] DNS zone transfer vulnerability" >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] DNS cache poisoning vulnerability" >> "$project_base/evidence/Vulnerabilities.txt"
     fi
     
     status_end $?
@@ -595,7 +624,7 @@ enumerate_mysql() {
             echo "Testing MySQL credentials on $ip" | strip_colors | add_timestamp >> "$log_file"
             nmap -p 3306 --script mysql-brute "$ip" -oN "$project_base/evidence/MYSQL/$ip-brute.txt" >/dev/null 2>&1
         done < "$project_base/services/MYSQL.txt"       
-        echo "[POTENTIAL] MySQL weak credentials or misconfigurations." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] MySQL weak credentials or misconfigurations" >> "$project_base/evidence/Vulnerabilities.txt"
     fi
     
     if [ -f "$project_base/services/MARIADB.txt" ]; then
@@ -611,7 +640,7 @@ enumerate_mysql() {
             echo "Testing MySQL credentials on $ip" | strip_colors | add_timestamp >> "$log_file"
             nmap -p 3306 --script mysql-brute "$ip" -oN "$project_base/evidence/MARIADB/$ip-brute.txt" >/dev/null 2>&1
         done < "$project_base/services/MARIADB.txt"
-        echo "[POTENTIAL] MariaDB weak credentials or misconfigurations." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] MariaDB weak credentials or misconfigurations" >> "$project_base/evidence/Vulnerabilities.txt"
     fi
     
     status_end $?
@@ -630,7 +659,7 @@ enumerate_postgresql() {
             nmap -p 5432 --script pgsql-databases,pgsql-brute "$ip" -oN "$project_base/evidence/POSTGRESQL/$ip-enum.txt" >/dev/null 2>&1
         done < "$project_base/services/POSTGRESQL.txt"
         
-        echo "[POTENTIAL] PostgreSQL weak credentials or misconfigurations." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] PostgreSQL weak credentials or misconfigurations" >> "$project_base/evidence/Vulnerabilities.txt"
     fi
     
     status_end $?
@@ -638,6 +667,10 @@ enumerate_postgresql() {
 
 enumerate_redis() {
     status_start "Enumerating Redis services"
+    
+    	if ! command -v redis-cli &>/dev/null; then
+		install_package "redis-cli"	
+	fi
     
     if [ -f "$project_base/services/REDIS.txt" ]; then
         mkdir -p "$project_base/evidence/REDIS"
@@ -653,7 +686,7 @@ enumerate_redis() {
             redis-cli -h $ip KEYS '*' >> "$project_base/evidence/REDIS/$ip-keys.txt" 2>&1
         done < "$project_base/services/REDIS.txt"
         
-        echo "[POTENTIAL] Redis unauthenticated access or sensitive data exposure." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] Redis unauthenticated access or sensitive data exposure" >> "$project_base/evidence/Vulnerabilities.txt"
     fi
     
     status_end $?
@@ -661,6 +694,10 @@ enumerate_redis() {
 
 enumerate_mongodb() {
     status_start "Enumerating MongoDB services"
+    
+   	if ! command -v mongo &>/dev/null; then
+		install_package "mongo"	
+	fi
     
     if [ -f "$project_base/services/MONGODB.txt" ]; then
         mkdir -p "$project_base/evidence/MONGODB"
@@ -672,7 +709,7 @@ enumerate_mongodb() {
             mongo --host $ip --eval "db.adminCommand('listDatabases')" > "$project_base/evidence/MONGODB/$ip-databases.txt" 2>&1
         done < "$project_base/services/MONGODB.txt"
         
-        echo "[POTENTIAL] MongoDB unauthenticated access or sensitive data exposure." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] MongoDB unauthenticated access or sensitive data exposure" >> "$project_base/evidence/Vulnerabilities.txt"
 
     fi
     
@@ -681,6 +718,10 @@ enumerate_mongodb() {
 
 enumerate_elasticsearch() {
     status_start "Enumerating Elasticsearch services"
+    
+    	if ! command -v curl &>/dev/null; then
+		install_package "curl"	
+	fi
     
     if [ -f "$project_base/services/ELASTICSEARCH.txt" ]; then
         mkdir -p "$project_base/evidence/ELASTICSEARCH"
@@ -692,7 +733,7 @@ enumerate_elasticsearch() {
             curl -X GET "http://$ip:9200/_cat/indices?v" > "$project_base/evidence/ELASTICSEARCH/$ip-indices.txt" 2>&1
         done < "$project_base/services/ELASTICSEARCH.txt"
         
-        echo "[POTENTIAL] Elasticsearch unauthenticated access or sensitive data exposure." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] Elasticsearch unauthenticated access or sensitive data exposure" >> "$project_base/evidence/Vulnerabilities.txt"
     fi
     
     status_end $?
@@ -700,6 +741,10 @@ enumerate_elasticsearch() {
 
 enumerate_docker() {
     status_start "Enumerating Docker services"
+    
+    	if ! command -v docker &>/dev/null; then
+		install_package "docker"	
+	fi
     
     if [ -f "$project_base/services/DOCKER.txt" ]; then
         mkdir -p "$project_base/evidence/DOCKER"
@@ -712,7 +757,7 @@ enumerate_docker() {
             docker -H tcp://$ip:2375 images > "$project_base/evidence/DOCKER/$ip-images.txt" 2>&1
         done < "$project_base/services/DOCKER.txt"
         
-        echo "[POTENTIAL] Docker unauthenticated API access or misconfigurations." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] Docker unauthenticated API access or misconfigurations" >> "$project_base/evidence/Vulnerabilities.txt"
     fi
     
     status_end $?
@@ -720,6 +765,10 @@ enumerate_docker() {
 
 enumerate_kubernetes() {
     status_start "Enumerating Kubernetes services"
+    
+        if ! command -v kubectl &>/dev/null; then
+		install_package "kubectl"	
+	fi
     
     if [ -f "$project_base/services/KUBERNETES.txt" ]; then
         mkdir -p "$project_base/evidence/KUBERNETES"
@@ -732,7 +781,7 @@ enumerate_kubernetes() {
             kubectl --server=https://$ip:6443 get services --all-namespaces > "$project_base/evidence/KUBERNETES/$ip-services.txt" 2>&1
         done < "$project_base/services/KUBERNETES.txt"
         
-        echo "- [POTENTIAL] Kubernetes unauthenticated API access or misconfigurations." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] Kubernetes unauthenticated API access or misconfigurations" >> "$project_base/evidence/Vulnerabilities.txt"
     fi
     
     status_end $?
@@ -740,6 +789,10 @@ enumerate_kubernetes() {
 
 enumerate_sip() {
     status_start "Enumerating SIP services"
+    
+    	if ! command -v sipvicious-svmap &>/dev/null; then
+		install_package "sipvicious-svmap"	
+	fi    
     
     if [ -f "$project_base/services/SIP.txt" ]; then
         mkdir -p "$project_base/evidence/SIP"
@@ -751,7 +804,7 @@ enumerate_sip() {
             sipvicious-svmap $ip > "$project_base/evidence/SIP/$ip-users.txt" 2>&1
         done < "$project_base/services/SIP.txt"
         
-        echo "[POTENTIAL] SIP weak authentication or misconfigurations." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] SIP weak authentication or misconfigurations" >> "$project_base/evidence/Vulnerabilities.txt"
     fi
     
     status_end $?
@@ -770,7 +823,7 @@ enumerate_rtsp() {
             nmap -p 554 --script rtsp-url-brute "$ip" -oN "$project_base/evidence/RTSP/$ip-streams.txt" >/dev/null 2>&1
         done < "$project_base/services/RTSP.txt"
         
-        echo "[POTENTIAL] RTSP unauthenticated access or misconfigurations." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] RTSP unauthenticated access or misconfigurations" >> "$project_base/evidence/Vulnerabilities.txt"
     fi
     
     status_end $?
@@ -778,6 +831,10 @@ enumerate_rtsp() {
 
 enumerate_rpc() {
     status_start "Enumerating RPC services"
+    
+    	if ! command -v rpcinfo &>/dev/null; then
+		install_package "rpcinfo"	
+	fi      
     
     if [ -f "$project_base/services/RPC.txt" ]; then
         mkdir -p "$project_base/evidence/RPC"
@@ -789,7 +846,7 @@ enumerate_rpc() {
             rpcinfo -p $ip > "$project_base/evidence/RPC/$ip-services.txt" 2>&1
         done < "$project_base/services/RPC.txt"
         
-        echo "- [POTENTIAL] RPC misconfigurations or exposed NFS mounts." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] RPC misconfigurations or exposed NFS mounts" >> "$project_base/evidence/Vulnerabilities.txt"
     fi
     
     status_end $?
@@ -808,9 +865,130 @@ enumerate_oracle() {
             nmap -p 1521 --script oracle-sid-brute,oracle-tns-version "$ip" -oN "$project_base/evidence/ORACLE/$ip-enum.txt" >/dev/null 2>&1
         done < "$project_base/services/ORACLE.txt"
         
-        echo "[POTENTIAL] Oracle weak credentials or misconfigurations." >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[POTENTIAL] Oracle weak credentials or misconfigurations" >> "$project_base/evidence/Vulnerabilities.txt"
     fi
     
+    status_end $?
+}
+
+# Function to enumerate LDAP services
+enumerate_ldap() {
+    status_start "Enumerating LDAP services"
+    
+    if [ -f "$project_base/services/LDAP.txt" ]; then
+        cut -d ":" -f1 "$project_base/services/LDAP.txt" > "$project_base/evidence/.ldap-targets.tmp"
+        
+        nmap -Pn -n -p 389 --script "ldap* and not brute" -iL "$project_base/evidence/.ldap-targets.tmp" -oN "$project_base/evidence/LDAP-Checks.txt" >/dev/null 2>&1
+        echo "[POTENTIAL] Check for anonymous LDAP access" >> "$project_base/evidence/Vulnerabilities.txt"
+        echo "[CONFIRMED] Use of clear-text protocols" >> "$project_base/evidence/Vulnerabilities.txt"
+        rm "$project_base/evidence/.ldap-targets.tmp" 2>/dev/null
+    fi
+    
+    status_end $?
+}
+
+# Function to enumerate LDAPS services
+enumerate_ldaps() {
+    status_start "Enumerating LDAPS services"
+    
+    if [ -f "$project_base/services/LDAPS.txt" ]; then
+        cut -d ":" -f1 "$project_base/services/LDAPS.txt" > "$project_base/evidence/.ldaps-targets.tmp"
+        
+        nmap -Pn -n -p 636 --script "ldap* and not brute" -iL "$project_base/evidence/.ldaps-targets.tmp" -oN "$project_base/evidence/LDAPS-Checks.txt" >/dev/null 2>&1
+        echo "[POTENTIAL] Check for misconfigured LDAPS services" >> "$project_base/evidence/Vulnerabilities.txt"
+        
+        rm "$project_base/evidence/.ldaps-targets.tmp" 2>/dev/null
+    fi
+    
+    status_end $?
+}
+
+# AD Checks (if kerberos or ldap services in use, do some basic checks on the domain)
+
+enumerate_domain() {
+    status_start "Active Directory environment detected. Running domain enumeration.."
+    
+    # Install dependencies
+    if ! command -v nmblookup &>/dev/null; then
+        install_package "samba-common-bin"  # nmblookup is part of samba package
+    fi
+    if ! command -v enum4linux &>/dev/null; then
+        install_package "enum4linux"
+    fi
+    if ! command -v ldapsearch &>/dev/null; then
+        install_package "ldap-utils"
+    fi
+
+    # Create AD evidence directory
+    mkdir -p "$project_base/evidence/AD"
+
+    # Identify potential Domain Controllers using common AD ports
+    echo "Scanning for potential Domain Controllers..." | strip_colors | add_timestamp >> "$log_file"
+    nmap -p 88,389,636,445,464 -iL "$project_base/targets.txt" -oG "$project_base/evidence/AD/dc_scan.txt" >/dev/null 2>&1
+
+    # Extract DC candidates
+    grep -Po 'Host: \K[^ ]+' "$project_base/evidence/AD/dc_scan.txt" | sort -u > "$project_base/evidence/AD/dc_candidates.txt"
+
+    # Process each candidate
+    while read -r hostline; do
+        echo "Processing potential DC: $hostline" | strip_colors | add_timestamp >> "$log_file"
+        
+        # Get NetBIOS information
+        hostnamevar=$(nmblookup -A "$hostline" | awk '/ACTIVE/ {print $1; exit}' | tr -d '\n')
+        domainvar=$(nmblookup -A "$hostline" | awk '/GROUP/ {print $1; exit}' | tr -d '\n')
+        
+        # Log basic DC info
+        echo "DC IP: $hostline" >> "$project_base/evidence/AD/domain_controllers.txt"
+        echo "  Hostname: ${hostnamevar:-Not Found}" >> "$project_base/evidence/AD/domain_controllers.txt"
+        echo "  Domain NetBIOS Name: ${domainvar:-Not Found}" >> "$project_base/evidence/AD/domain_controllers.txt"
+        
+        # Perform enum4linux enumeration
+        echo "Running enum4linux on $hostline" | strip_colors | add_timestamp >> "$log_file"
+        enum4linux -a "$hostline" > "$project_base/evidence/AD/enum4linux_$hostline.txt" 2>&1
+        
+        # Check for null session vulnerability
+        if grep -q "Successfully established null session" "$project_base/evidence/AD/enum4linux_$hostline.txt"; then
+            echo "[CONFIRMED] Domain Controller SMB Null session enabled" >> "$project_base/evidence/vulnerabilities.txt"
+        fi
+        
+        # Check for SMBv1
+        if grep -qi "SMBv1: Yes" "$project_base/evidence/AD/enum4linux_$hostline.txt"; then
+            echo "[CONFIRMED] SMB version 1 enabled" >> "$project_base/evidence/vulnerabilities.txt"
+        fi
+
+        # LDAP anonymous bind check
+        echo "Checking LDAP anonymous bind..." | strip_colors | add_timestamp >> "$log_file"
+        ldapsearch -x -H "ldap://$hostline" -b '' -s base > "$project_base/evidence/AD/ldap_anonymous_$hostline.txt" 2>&1
+        if grep -q "numEntries" "$project_base/evidence/AD/ldap_anonymous_$hostline.txt"; then
+            echo "[CONFIRMED] LDAP anonymous bind allowed" >> "$project_base/evidence/vulnerabilities.txt"
+        fi
+
+        # Kerberos checks
+        echo "Checking Kerberos configuration..." | strip_colors | add_timestamp >> "$log_file"
+        nmap -p 88 --script krb5-enum-users "$hostline" > "$project_base/evidence/AD/kerberos_users_$hostline.txt" 2>&1
+        
+    done < "$project_base/evidence/AD/dc_candidates.txt"
+
+    # Additional domain-wide checks
+    if [ -f "$project_base/evidence/AD/domain_controllers.txt" ]; then
+        # Extract domain name from first DC
+        domain=$(awk '/Domain NetBIOS Name:/ {print $4; exit}' "$project_base/evidence/AD/domain_controllers.txt")
+        
+        # Password policy check
+        echo "Checking domain password policy for domain: $domain" | strip_colors | add_timestamp >> "$log_file"
+        net rpc password policy -U "" -S "$hostline" > "$project_base/evidence/AD/password_policy.txt" 2>&1
+        
+        # User enumeration
+        echo "Enumerating domain users for domain: $domain" | strip_colors | add_timestamp >> "$log_file"
+        enum4linux -U "$hostline" > "$project_base/evidence/AD/domain_users.txt" 2>&1
+        
+        # Group enumeration
+        echo "Enumerating domain groups for domain: $domain" | strip_colors | add_timestamp >> "$log_file"
+        enum4linux -G "$hostline" > "$project_base/evidence/AD/domain_groups.txt" 2>&1
+        
+        echo "[INFO] Active Directory domain identified: ${domain:-Unknown}" >> "$project_base/evidence/vulnerabilities.txt"
+    fi
+
     status_end $?
 }
 
@@ -859,9 +1037,6 @@ enumerate_services() {
     if [ -f "$project_base/services/LDAPS.txt" ]; then
         enumerate_ldaps
     fi
-    if [ -f "$project_base/services/KERBEROS.txt" ]; then
-        enumerate_kerberos
-    fi
     if [ -f "$project_base/services/DNS.txt" ]; then
         enumerate_dns
     fi
@@ -898,42 +1073,10 @@ enumerate_services() {
     if [ -f "$project_base/services/ORACLE.txt" ]; then
         enumerate_oracle
     fi
-
+    if [ -f "$project_base/services/LDAP.txt" ] || [ -f "$project_base/services/LDAPS.txt" ] ||  [ -f "$project_base/services/KERBEROS.txt" ]; then
+        enumerate_domain
+    fi
 }
-
-'''
-# AD Checks
-if [ -f "./$projectname/services/LDAP.txt" ] || [ -f "./$projectname/services/LDAPS.txt" ] || [ -f "./$projectname/services/KERBEROS.txt" ]; then
-	# Check for Domain Controllers
-	# if port 88,636,389 open
-	if [ -f "./$projectname/services/LDAP.txt" ]; then
-		cat ./$projectname/services/LDAP.txt | cut -d ":" -f1 >> ./$projectname/evidence/.dcs.tmp
-	fi
-	if [ -f "./$projectname/services/LDAPS.txt" ]; then
-		cat ./$projectname/services/LDAPS.txt | cut -d ":" -f1 >> ./$projectname/evidence/.dcs.tmp
-	fi
-	if [ -f "./$projectname/services/KERBEROS.txt" ]; then
-		cat ./$projectname/services/KERBEROS.txt | cut -d ":" -f1 >> ./$projectname/evidence/.dcs.tmp
-	fi
-	
-	sort -u -o ./$projectname/evidence/.dcs.tmp ./$projectname/evidence/.dcs.tmp
-	
-	for hostline in $(cat "./$projectname/evidence/.dcs.tmp"); do
-	
-		hostnamevar=$(nmblookup -A $hostline | awk "/ACTIVE/ {print $1; exit}")
-		domainvar=$(nmblookup -A $hostline | awk "/GROUP/ {print $1; exit}")
-		echo "DC IP: "$hostline" - Hostname: "$hostnamevar" - Domain NetBios Name: "$domainvar >> ./$projectname/evidence/AD-Information.txt
-	done
-	
-	rm ./$projectname/evidence/.dcs.tmp
-	echo "> AD Domain environment detected. Details:"
-	cat ./$projectname/evidence/AD-Information.txt
-	
-	# Add vuln
-	# Maybe use rpcclient or enum4linux to check for null session? For now just suggesting to the user.
-	echo "- [INFO] An AD environment was found. Check for null-session on Domain Controllers." >> ./$projectname/evidence/vulnerabilities.txt
-fi
-'''
 
 # --------------------------
 # HTML Report Function
